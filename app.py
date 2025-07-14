@@ -133,7 +133,10 @@ def respostas():
                 <td>{numero}</td>
                 <td>{msg}</td>
                 <td>{dt}</td>
-                <td>{ref_id or '-'}</td>
+                <td>
+                    {f'<a href="/respostas_por_referencia/{ref_id}">{ref_id}</a>' if ref_id else '-'}
+                </td>
+
                 <td>{resposta_original or '-'}</td>
             </tr>
         """
