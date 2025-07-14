@@ -56,42 +56,40 @@ def home():
 def webhook():
     dados = request.json
 
-    # Salva log bruto
-    with open("log.txt", "a", encoding="utf-8") as f:
-        f.write(f"{json.dumps(dados, ensure_ascii=False)}\n")
+    # Ignorar grupos ou mensagens sem conteúdo útil
+    if dados.get("isGroup") or dados.get("type") != "ReceivedCallback":
+        return jsonify({"status": "ignorado"})
 
     numero = dados.get("phone")
-    mensagem_texto = dados.get("message")
-    imagem = dados.get("image")
-    legenda = imagem.get("caption") if imagem else None
-    imagem_url = imagem.get("imageUrl") if imagem else None
     tipo = dados.get("type")
     is_group = dados.get("isGroup", False)
+    from_me = dados.get("fromMe", False)
     reference_id = dados.get("referenceMessageId")
 
-    if is_group or tipo == "sticker":
+    # Extração da mensagem (pode estar em text["message"])
+    mensagem_texto = None
+    if isinstance(dados.get("text"), dict):
+        mensagem_texto = dados["text"].get("message")
+    elif isinstance(dados.get("message"), str):
+        mensagem_texto = dados.get("message")
+
+    if not mensagem_texto or from_me:
         return jsonify({"status": "ignorado"})
 
-    if imagem_url:
-        mensagem_final = f"[IMG] {imagem_url}\nLegenda: {legenda or '(sem legenda)'}"
-    else:
-        mensagem_final = mensagem_texto
-
-    if not mensagem_final:
-        return jsonify({"status": "ignorado"})
-
+    # Registra no banco
     data_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn = sqlite3.connect("dados.db")
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO respostas (numero, mensagem, data_hora, reference_id) VALUES (?, ?, ?, ?)",
-        (numero, mensagem_final, data_hora, reference_id)
+        (numero, mensagem_texto, data_hora, reference_id)
     )
     conn.commit()
     conn.close()
 
-    print(f"✅ Registrado no banco: {numero} | {mensagem_final} | {reference_id}")
+    print(f"✅ Recebido: {numero} | {mensagem_texto} | Ref: {reference_id}")
     return jsonify({"status": "ok"})
+
 
 @app.route("/respostas")
 def respostas():
