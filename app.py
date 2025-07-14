@@ -30,42 +30,90 @@ def webhook():
     dados = request.json
     numero = dados.get("phone")
     mensagem_texto = dados.get("message")
-    imagem_url = dados.get("imageUrl")
-    legenda = dados.get("caption")
-    data_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    imagem = dados.get("image")
+    legenda = imagem.get("caption") if imagem else None
+    imagem_url = imagem.get("imageUrl") if imagem else None
+    tipo = dados.get("type")
+    is_group = dados.get("isGroup", False)
+    reference_id = dados.get("referenceMessageId")  # 👈 Aqui pegamos a resposta vinculada
 
-    # Monta conteúdo salvo: imagem + legenda OU texto simples
+    # Ignorar mensagens de grupo ou sem conteúdo
+    if is_group or tipo == "sticker":
+        return jsonify({"status": "ignorado"})
+
     if imagem_url:
         mensagem_final = f"[IMG] {imagem_url}\nLegenda: {legenda or '(sem legenda)'}"
     else:
         mensagem_final = mensagem_texto
 
-    if numero and mensagem_final:
-        conn = sqlite3.connect("dados.db")
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO respostas (numero, mensagem, data_hora) VALUES (?, ?, ?)",
-                       (numero, mensagem_final, data_hora))
-        conn.commit()
-        conn.close()
+    if not mensagem_final:
+        return jsonify({"status": "ignorado"})
 
-        print(f"📥 Mensagem recebida de {numero}: {mensagem_final}")
+    # Salvar no banco com o reference_id
+    data_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn = sqlite3.connect("dados.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS respostas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            numero TEXT,
+            mensagem TEXT,
+            data_hora TEXT,
+            reference_id TEXT
+        )
+    """)
+    cursor.execute("INSERT INTO respostas (numero, mensagem, data_hora, reference_id) VALUES (?, ?, ?, ?)",
+                   (numero, mensagem_final, data_hora, reference_id))
+    conn.commit()
+    conn.close()
 
+    print(f"📥 De {numero}: {mensagem_final} (responde a: {reference_id})")
     return jsonify({"status": "ok"})
+
 
 
 @app.route("/respostas")
 def respostas():
     conn = sqlite3.connect("dados.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT numero, mensagem, data_hora FROM respostas ORDER BY id DESC")
+    cursor.execute("SELECT numero, mensagem, data_hora, reference_id FROM respostas ORDER BY id DESC")
     dados = cursor.fetchall()
     conn.close()
 
-    html = "<h2>📨 Respostas recebidas</h2><ul>"
-    for numero, msg, dt in dados:
-        html += f"<li><b>{numero}</b> às <i>{dt}</i>: {msg}</li>"
-    html += "</ul>"
+    html = """
+    <html>
+    <head>
+        <title>Respostas Recebidas</title>
+        <style>
+            table { width: 90%; margin: 20px auto; border-collapse: collapse; }
+            th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; }
+            body { font-family: Arial, sans-serif; background: #f9f9f9; }
+            h2 { text-align: center; color: #333; }
+        </style>
+    </head>
+    <body>
+        <h2>📨 Respostas Recebidas</h2>
+        <table>
+            <tr>
+                <th>Número</th>
+                <th>Mensagem</th>
+                <th>Data/Hora</th>
+                <th>Referência (ID da Mensagem)</th>
+            </tr>
+    """
+    for numero, msg, dt, ref_id in dados:
+        html += f"""
+            <tr>
+                <td>{numero}</td>
+                <td>{msg}</td>
+                <td>{dt}</td>
+                <td>{ref_id or '-'}</td>
+            </tr>
+        """
+    html += "</table></body></html>"
     return html
+
 
 if __name__ == "__main__":
     app.run(debug=True)
