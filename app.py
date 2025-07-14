@@ -158,5 +158,54 @@ def buscar_respostas():
     conn.close()
     return jsonify(dados)
 
+@app.route("/respostas_por_referencia/<ref_id>")
+def respostas_por_referencia(ref_id):
+    conn = sqlite3.connect("dados.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT numero, mensagem, data_hora 
+        FROM respostas 
+        WHERE reference_id = ? 
+        ORDER BY id DESC
+    """, (ref_id,))
+    dados = cursor.fetchall()
+    conn.close()
+
+    if not dados:
+        return f"<h3>❌ Nenhuma resposta encontrada com referência: {ref_id}</h3>"
+
+    html = f"""
+    <html>
+    <head>
+        <title>Respostas por Referência</title>
+        <style>
+            table {{ width: 90%; margin: 20px auto; border-collapse: collapse; }}
+            th, td {{ border: 1px solid #ccc; padding: 8px; text-align: left; }}
+            th {{ background-color: #f2f2f2; }}
+            body {{ font-family: Arial, sans-serif; background: #f9f9f9; }}
+            h2 {{ text-align: center; color: #333; }}
+        </style>
+    </head>
+    <body>
+        <h2>🔁 Respostas para a mensagem com ID: {ref_id}</h2>
+        <table>
+            <tr>
+                <th>Número</th>
+                <th>Mensagem</th>
+                <th>Data/Hora</th>
+            </tr>
+    """
+    for numero, msg, dt in dados:
+        html += f"""
+            <tr>
+                <td>{numero}</td>
+                <td>{msg}</td>
+                <td>{dt}</td>
+            </tr>
+        """
+    html += "</table></body></html>"
+    return html
+
+
 if __name__ == "__main__":
     app.run(debug=True)
