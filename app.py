@@ -35,9 +35,8 @@ def webhook():
     imagem_url = imagem.get("imageUrl") if imagem else None
     tipo = dados.get("type")
     is_group = dados.get("isGroup", False)
-    reference_id = dados.get("referenceMessageId")  # 👈 Aqui pegamos a resposta vinculada
+    reference_id = dados.get("referenceMessageId")
 
-    # Ignorar mensagens de grupo ou sem conteúdo
     if is_group or tipo == "sticker":
         return jsonify({"status": "ignorado"})
 
@@ -49,26 +48,19 @@ def webhook():
     if not mensagem_final:
         return jsonify({"status": "ignorado"})
 
-    # Salvar no banco com o reference_id
     data_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     conn = sqlite3.connect("dados.db")
     cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS respostas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            numero TEXT,
-            mensagem TEXT,
-            data_hora TEXT,
-            reference_id TEXT
-        )
-    """)
-    cursor.execute("INSERT INTO respostas (numero, mensagem, data_hora, reference_id) VALUES (?, ?, ?, ?)",
-                   (numero, mensagem_final, data_hora, reference_id))
+    cursor.execute(
+        "INSERT INTO respostas (numero, mensagem, data_hora, reference_id) VALUES (?, ?, ?, ?)",
+        (numero, mensagem_final, data_hora, reference_id)
+    )
     conn.commit()
     conn.close()
 
     print(f"📥 De {numero}: {mensagem_final} (responde a: {reference_id})")
     return jsonify({"status": "ok"})
+
 
 
 
