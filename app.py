@@ -29,20 +29,29 @@ def home():
 def webhook():
     dados = request.json
     numero = dados.get("phone")
-    mensagem = dados.get("message")
+    mensagem_texto = dados.get("message")
+    imagem_url = dados.get("imageUrl")
+    legenda = dados.get("caption")
     data_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    if numero and mensagem:
+    # Monta conteúdo salvo: imagem + legenda OU texto simples
+    if imagem_url:
+        mensagem_final = f"[IMG] {imagem_url}\nLegenda: {legenda or '(sem legenda)'}"
+    else:
+        mensagem_final = mensagem_texto
+
+    if numero and mensagem_final:
         conn = sqlite3.connect("dados.db")
         cursor = conn.cursor()
         cursor.execute("INSERT INTO respostas (numero, mensagem, data_hora) VALUES (?, ?, ?)",
-                       (numero, mensagem, data_hora))
+                       (numero, mensagem_final, data_hora))
         conn.commit()
         conn.close()
 
-        print(f"📥 Mensagem recebida de {numero}: {mensagem}")
+        print(f"📥 Mensagem recebida de {numero}: {mensagem_final}")
 
     return jsonify({"status": "ok"})
+
 
 @app.route("/respostas")
 def respostas():
