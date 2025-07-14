@@ -8,16 +8,24 @@ app = Flask(__name__)
 def init_db():
     conn = sqlite3.connect("dados.db")
     cursor = conn.cursor()
+    
+    # Apaga a tabela antiga (caso exista)
+    cursor.execute("DROP TABLE IF EXISTS respostas")
+    
+    # Cria a nova tabela com o campo reference_id
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS respostas (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        numero TEXT,
-        mensagem TEXT,
-        data_hora TEXT
-    )
+        CREATE TABLE respostas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            numero TEXT,
+            mensagem TEXT,
+            data_hora TEXT,
+            reference_id TEXT
+        )
     """)
+    
     conn.commit()
     conn.close()
+
 
 init_db()
 
