@@ -68,6 +68,7 @@ def webhook():
     )
     conn.commit()
     conn.close()
+    print(f"✅ Registrado no banco: {numero} | {mensagem_final} | {reference_id}")
 
     print(f"📥 De {numero}: {mensagem_final} (responde a: {reference_id})")
     return jsonify({"status": "ok"})
@@ -116,6 +117,15 @@ def respostas():
         """
     html += "</table></body></html>"
     return html
+
+@app.route("/debug")
+def debug():
+    conn = sqlite3.connect("dados.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM respostas")
+    todos = cursor.fetchall()
+    conn.close()
+    return jsonify(todos)
 
 
 if __name__ == "__main__":
