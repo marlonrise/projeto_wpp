@@ -95,14 +95,15 @@ def webhook():
 def respostas():
     conn = sqlite3.connect("dados.db")
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT r.numero, r.mensagem, r.data_hora, r.reference_id, e.mensagem
-        FROM respostas r
-        LEFT JOIN mensagens_enviadas e ON r.reference_id = e.message_id
-        ORDER BY r.id DESC
-    """)
-    dados = cursor.fetchall()
-    conn.close()
+
+    # Buscar todas as respostas
+    cursor.execute("SELECT id, numero, mensagem, data_hora, reference_id FROM respostas ORDER BY id DESC")
+    respostas = cursor.fetchall()
+
+    # Criar um dicionário com mensagens por ID
+    cursor.execute("SELECT id, reference_id, mensagem, data_hora FROM respostas")
+    todas_msgs = cursor.fetchall()
+    mapa_id_para_mensagem = {str(ref_id): msg for (_, ref_id, msg, _) in todas_msgs if ref_id}
 
     html = """
     <html>
@@ -127,21 +128,38 @@ def respostas():
                 <th>Mensagem Respondida</th>
             </tr>
     """
-    for numero, msg, dt, ref_id, resposta_original in dados:
+
+    for id_, numero, mensagem, data_hora, ref_id in respostas:
+        ref_id_display = ref_id or "-"
+        resposta_referenciada = "-"
+
+        if ref_id and ref_id in mapa_id_para_mensagem:
+            resposta_referenciada = mapa_id_para_mensagem[ref_id]
+        else:
+            # Pegar a mensagem enviada anterior a esta (mesma pessoa)
+            cursor.execute("""
+                SELECT mensagem FROM respostas 
+                WHERE numero = ? AND id < ? AND mensagem LIKE '*MENSAGEM DE TESTE%' 
+                ORDER BY id DESC LIMIT 1
+            """, (numero, id_))
+            row = cursor.fetchone()
+            if row:
+                resposta_referenciada = row[0]
+
         html += f"""
             <tr>
                 <td>{numero}</td>
-                <td>{msg}</td>
-                <td>{dt}</td>
-                <td>
-                    {f'<a href="/respostas_por_referencia/{ref_id}">{ref_id}</a>' if ref_id else '-'}
-                </td>
-
-                <td>{resposta_original or '-'}</td>
+                <td>{mensagem}</td>
+                <td>{data_hora}</td>
+                <td>{ref_id_display}</td>
+                <td>{resposta_referenciada}</td>
             </tr>
         """
+
     html += "</table></body></html>"
+    conn.close()
     return html
+
 
 @app.route("/log")
 def log():
