@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import sqlite3
 from datetime import datetime
 import os
+import json
 
 app = Flask(__name__)
 
@@ -10,26 +11,42 @@ def init_db():
     conn = sqlite3.connect("dados.db")
     cursor = conn.cursor()
 
-    # Cria a tabela se não existir
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS respostas (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         numero TEXT,
         mensagem TEXT,
-        data_hora TEXT
+        data_hora TEXT,
+        reference_id TEXT
     )
     """)
 
-    # Adiciona coluna reference_id se ainda não existir
-    cursor.execute("PRAGMA table_info(respostas)")
-    colunas = [col[1] for col in cursor.fetchall()]
-    if "reference_id" not in colunas:
-        cursor.execute("ALTER TABLE respostas ADD COLUMN reference_id TEXT")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS mensagens_enviadas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        numero TEXT,
+        mensagem TEXT,
+        message_id TEXT,
+        data_envio TEXT
+    )
+    """)
 
     conn.commit()
     conn.close()
 
 init_db()
+
+# Função para salvar envio
+def salvar_envio(numero, mensagem, message_id):
+    conn = sqlite3.connect("dados.db")
+    cursor = conn.cursor()
+    data_envio = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cursor.execute(
+        "INSERT INTO mensagens_enviadas (numero, mensagem, message_id, data_envio) VALUES (?, ?, ?, ?)",
+        (numero, mensagem, message_id, data_envio)
+    )
+    conn.commit()
+    conn.close()
 
 @app.route("/")
 def home():
@@ -38,6 +55,11 @@ def home():
 @app.route("/webhook", methods=["POST"])
 def webhook():
     dados = request.json
+
+    # Salva log bruto
+    with open("log.txt", "a", encoding="utf-8") as f:
+        f.write(f"{json.dumps(dados, ensure_ascii=False)}\n")
+
     numero = dados.get("phone")
     mensagem_texto = dados.get("message")
     imagem = dados.get("image")
@@ -75,7 +97,12 @@ def webhook():
 def respostas():
     conn = sqlite3.connect("dados.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT numero, mensagem, data_hora, reference_id FROM respostas ORDER BY id DESC")
+    cursor.execute("""
+        SELECT r.numero, r.mensagem, r.data_hora, r.reference_id, e.mensagem
+        FROM respostas r
+        LEFT JOIN mensagens_enviadas e ON r.reference_id = e.message_id
+        ORDER BY r.id DESC
+    """)
     dados = cursor.fetchall()
     conn.close()
 
@@ -84,7 +111,7 @@ def respostas():
     <head>
         <title>Respostas Recebidas</title>
         <style>
-            table { width: 90%; margin: 20px auto; border-collapse: collapse; }
+            table { width: 95%; margin: 20px auto; border-collapse: collapse; }
             th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
             th { background-color: #f2f2f2; }
             body { font-family: Arial, sans-serif; background: #f9f9f9; }
@@ -98,89 +125,30 @@ def respostas():
                 <th>Número</th>
                 <th>Mensagem</th>
                 <th>Data/Hora</th>
-                <th>Referência (ID da Mensagem)</th>
+                <th>ID Referência</th>
+                <th>Mensagem Respondida</th>
             </tr>
     """
-    for numero, msg, dt, ref_id in dados:
+    for numero, msg, dt, ref_id, resposta_original in dados:
         html += f"""
             <tr>
                 <td>{numero}</td>
                 <td>{msg}</td>
                 <td>{dt}</td>
                 <td>{ref_id or '-'}</td>
+                <td>{resposta_original or '-'}</td>
             </tr>
         """
-    html += "</table></body></html>"
-    return html
-
-@app.route("/debug")
-def debug():
-    conn = sqlite3.connect("dados.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM respostas")
-    todos = cursor.fetchall()
-    conn.close()
-    return jsonify(todos)
-
-@app.route("/verificar_banco")
-def verificar_banco():
-    existe = os.path.exists("dados.db")
-    return f"Banco existe? {'✅ Sim' if existe else '❌ Não'}"
-
-@app.route("/tabela_completa")
-def tabela_completa():
-    conn = sqlite3.connect("dados.db")
-    cursor = conn.cursor()
-
-    # Mostrar colunas
-    cursor.execute("PRAGMA table_info(respostas)")
-    colunas = cursor.fetchall()
-
-    # Mostrar dados
-    cursor.execute("SELECT * FROM respostas ORDER BY id DESC")
-    dados = cursor.fetchall()
-    conn.close()
-
-    html = """
-    <html>
-    <head>
-        <title>Tabela Completa</title>
-        <style>
-            table { width: 95%; margin: 20px auto; border-collapse: collapse; font-family: sans-serif; }
-            th, td { border: 1px solid #aaa; padding: 6px; text-align: left; }
-            th { background-color: #ddd; }
-            h2 { text-align: center; }
-        </style>
-    </head>
-    <body>
-        <h2>📊 Estrutura da Tabela `respostas`</h2>
-        <table>
-            <tr><th>ID</th><th>Nome da Coluna</th><th>Tipo</th></tr>
-    """
-    for col in colunas:
-        html += f"<tr><td>{col[0]}</td><td>{col[1]}</td><td>{col[2]}</td></tr>"
-    html += "</table><h2>📋 Dados</h2><table><tr>"
-
-    if colunas:
-        for col in colunas:
-            html += f"<th>{col[1]}</th>"
-        html += "</tr>"
-        for linha in dados:
-            html += "<tr>" + "".join(f"<td>{valor}</td>" for valor in linha) + "</tr>"
-    else:
-        html += "<tr><td colspan='5'>Tabela vazia</td></tr>"
-
     html += "</table></body></html>"
     return html
 
 @app.route("/log")
 def log():
     if os.path.exists("log.txt"):
-        with open("log.txt") as f:
+        with open("log.txt", encoding="utf-8") as f:
             conteudo = f.read()
         return f"<pre>{conteudo}</pre>"
     return "Sem log ainda."
-
 
 @app.route("/buscar_respostas")
 def buscar_respostas():
@@ -191,7 +159,6 @@ def buscar_respostas():
     dados = cursor.fetchall()
     conn.close()
     return jsonify(dados)
-
 
 if __name__ == "__main__":
     app.run(debug=True)
