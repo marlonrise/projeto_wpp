@@ -173,5 +173,25 @@ def tabela_completa():
     html += "</table></body></html>"
     return html
 
+@app.route("/log")
+def log():
+    if os.path.exists("log.txt"):
+        with open("log.txt") as f:
+            conteudo = f.read()
+        return f"<pre>{conteudo}</pre>"
+    return "Sem log ainda."
+
+
+@app.route("/buscar_respostas")
+def buscar_respostas():
+    numero = request.args.get("numero")
+    conn = sqlite3.connect("dados.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM respostas WHERE numero LIKE ?", (f"%{numero}%",))
+    dados = cursor.fetchall()
+    conn.close()
+    return jsonify(dados)
+
+
 if __name__ == "__main__":
     app.run(debug=True)
