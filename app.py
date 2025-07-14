@@ -1,16 +1,16 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify
 import sqlite3
 from datetime import datetime
 import os
 
 app = Flask(__name__)
 
-# Cria banco e tabela se não existir
+# Inicializa o banco
 def init_db():
     conn = sqlite3.connect("dados.db")
     cursor = conn.cursor()
 
-    # Cria a tabela se ainda não existir
+    # Cria a tabela se não existir
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS respostas (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -20,7 +20,7 @@ def init_db():
     )
     """)
 
-    # Verifica se a coluna reference_id já existe
+    # Adiciona coluna reference_id se ainda não existir
     cursor.execute("PRAGMA table_info(respostas)")
     colunas = [col[1] for col in cursor.fetchall()]
     if "reference_id" not in colunas:
@@ -28,8 +28,6 @@ def init_db():
 
     conn.commit()
     conn.close()
-
-
 
 init_db()
 
@@ -69,13 +67,9 @@ def webhook():
     )
     conn.commit()
     conn.close()
+
     print(f"✅ Registrado no banco: {numero} | {mensagem_final} | {reference_id}")
-
-    print(f"📥 De {numero}: {mensagem_final} (responde a: {reference_id})")
     return jsonify({"status": "ok"})
-
-
-
 
 @app.route("/respostas")
 def respostas():
@@ -128,11 +122,56 @@ def debug():
     conn.close()
     return jsonify(todos)
 
-
 @app.route("/verificar_banco")
 def verificar_banco():
     existe = os.path.exists("dados.db")
     return f"Banco existe? {'✅ Sim' if existe else '❌ Não'}"
+
+@app.route("/tabela_completa")
+def tabela_completa():
+    conn = sqlite3.connect("dados.db")
+    cursor = conn.cursor()
+
+    # Mostrar colunas
+    cursor.execute("PRAGMA table_info(respostas)")
+    colunas = cursor.fetchall()
+
+    # Mostrar dados
+    cursor.execute("SELECT * FROM respostas ORDER BY id DESC")
+    dados = cursor.fetchall()
+    conn.close()
+
+    html = """
+    <html>
+    <head>
+        <title>Tabela Completa</title>
+        <style>
+            table { width: 95%; margin: 20px auto; border-collapse: collapse; font-family: sans-serif; }
+            th, td { border: 1px solid #aaa; padding: 6px; text-align: left; }
+            th { background-color: #ddd; }
+            h2 { text-align: center; }
+        </style>
+    </head>
+    <body>
+        <h2>📊 Estrutura da Tabela `respostas`</h2>
+        <table>
+            <tr><th>ID</th><th>Nome da Coluna</th><th>Tipo</th></tr>
+    """
+    for col in colunas:
+        html += f"<tr><td>{col[0]}</td><td>{col[1]}</td><td>{col[2]}</td></tr>"
+    html += "</table><h2>📋 Dados</h2><table><tr>"
+
+    if colunas:
+        for col in colunas:
+            html += f"<th>{col[1]}</th>"
+        html += "</tr>"
+        for linha in dados:
+            html += "<tr>" + "".join(f"<td>{valor}</td>" for valor in linha) + "</tr>"
+    else:
+        html += "<tr><td colspan='5'>Tabela vazia</td></tr>"
+
+    html += "</table></body></html>"
+    return html
 
 if __name__ == "__main__":
     app.run(debug=True)
